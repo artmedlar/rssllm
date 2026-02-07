@@ -30,26 +30,7 @@ npm run dev
 - `src/shared/` – Shared types and constants (framework-agnostic).
 - `index.html` – Renderer entry (Vite).
 
-## Connect to GitHub
+## Repo
 
-1. **Create a new repo on GitHub**
-   - Go to [github.com/new](https://github.com/new).
-   - Repository name: `rss` (or `rss-reader`).
-   - Leave it empty (no README, .gitignore, or license).
-   - Create repository.
-
-2. **Add the remote and push**
-   ```bash
-   cd ~/local/rss
-   git remote add origin https://github.com/YOUR_USERNAME/rss.git
-   git add .
-   git commit -m "Phase 1: Electron + Vite + React shell with IPC ping"
-   git branch -M main
-   git push -u origin main
-   ```
-   Replace `YOUR_USERNAME` with your GitHub username. Use the repo URL GitHub shows (HTTPS or SSH).
-
-3. **If you use SSH**
-   ```bash
-   git remote add origin git@github.com:YOUR_USERNAME/rss.git
-   ```
+- **GitHub:** [github.com/artmedlar/rssllm](https://github.com/artmedlar/rssllm)
+- Remote: `origin` → `https://github.com/artmedlar/rssllm.git`

@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { initDb, addFeed as dbAddFeed, getFeeds, getUnifiedFeed, markRead as dbMarkRead, upsertItems, setFeedLastFetched } from './db.js'
+import { fetchAndParse } from './feed.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -25,7 +27,10 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const dbPath = path.join(app.getPath('userData'), 'rss-reader.db')
+  await initDb(dbPath)
+
   createWindow()
 
   app.on('activate', () => {
@@ -37,5 +42,27 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-// IPC: ping for Phase 1 (renderer can call window.electronAPI.ping())
+// --- IPC ---
 ipcMain.handle('ping', () => 'pong')
+
+ipcMain.handle('subscriptions:list', () => getFeeds())
+
+ipcMain.handle('subscriptions:add', async (_event, url) => {
+  if (!url || typeof url !== 'string') throw new Error('URL required')
+  const { title, items } = await fetchAndParse(url)
+  const feedId = dbAddFeed(url, title)
+  if (items.length) {
+    upsertItems(feedId, items)
+  }
+  setFeedLastFetched(feedId, Date.now())
+  return { id: feedId, url, title }
+})
+
+ipcMain.handle('feed:get', (_event, page = 0, limit = 30) => {
+  return getUnifiedFeed(Number(page), Math.min(Number(limit) || 30, 100))
+})
+
+ipcMain.handle('feed:markRead', (_event, itemId) => {
+  dbMarkRead(Number(itemId))
+  return true
+})
