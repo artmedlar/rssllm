@@ -1,0 +1,17 @@
+/* Design tokens: single place for colors, spacing, typography */
+:root {
+  --color-bg: #fff;
+  --color-text: #1a1a1a;
+  --font-sans: system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
