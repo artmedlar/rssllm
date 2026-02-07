@@ -36,6 +36,7 @@ export async function initDb(pathToDb) {
   db = new SQL.Database(buffer)
 
   db.run('PRAGMA journal_mode = WAL')
+  db.run('PRAGMA foreign_keys = ON')
 
   db.run(`
     CREATE TABLE IF NOT EXISTS feeds (
@@ -92,6 +93,14 @@ export function addFeed(url, title = '') {
   const id = row[0]?.values?.[0]?.[0] ?? 0
   persist()
   return id
+}
+
+export function removeFeed(feedId) {
+  const d = getDb()
+  d.run('DELETE FROM read_state WHERE item_id IN (SELECT id FROM items WHERE feed_id = ?)', [feedId])
+  d.run('DELETE FROM items WHERE feed_id = ?', [feedId])
+  d.run('DELETE FROM feeds WHERE id = ?', [feedId])
+  persist()
 }
 
 export function getFeeds() {

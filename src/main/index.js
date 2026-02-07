@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { initDb, addFeed as dbAddFeed, getFeeds, getUnifiedFeed, markRead as dbMarkRead, upsertItems, setFeedLastFetched } from './db.js'
+import { initDb, addFeed as dbAddFeed, getFeeds, getUnifiedFeed, markRead as dbMarkRead, upsertItems, setFeedLastFetched, removeFeed as dbRemoveFeed } from './db.js'
 import { fetchAndParse } from './feed.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -65,4 +65,13 @@ ipcMain.handle('feed:get', (_event, page = 0, limit = 30) => {
 ipcMain.handle('feed:markRead', (_event, itemId) => {
   dbMarkRead(Number(itemId))
   return true
+})
+
+ipcMain.handle('subscriptions:remove', (_event, feedId) => {
+  dbRemoveFeed(Number(feedId))
+  return true
+})
+
+ipcMain.handle('openExternal', (_event, url) => {
+  if (url && typeof url === 'string') shell.openExternal(url)
 })

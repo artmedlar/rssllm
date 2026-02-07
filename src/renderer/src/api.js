@@ -44,6 +44,16 @@ export async function getFeed(page = 0, limit = 30) {
 }
 
 /**
+ * @param {number} feedId
+ * @returns {Promise<boolean>}
+ */
+export async function removeSubscription(feedId) {
+  const api = getAPI()
+  if (!api?.subscriptionsRemove) return false
+  return api.subscriptionsRemove(feedId)
+}
+
+/**
  * @param {number} itemId
  * @returns {Promise<boolean>}
  */
@@ -51,4 +61,12 @@ export async function markRead(itemId) {
   const api = getAPI()
   if (!api?.feedMarkRead) return false
   return api.feedMarkRead(itemId)
+}
+
+/**
+ * @param {string} url - Open in system browser
+ */
+export function openExternal(url) {
+  const api = getAPI()
+  if (api?.openExternal) api.openExternal(url)
 }
