@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getFeed } from '../api'
+import { getFeed, refreshSubscriptions } from '../api'
 import StoryCard from './StoryCard'
 import ArticleModal from './ArticleModal'
 
@@ -23,6 +23,7 @@ export default function FeedView() {
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
   const sentinelRef = useRef(null)
 
   const loadPage = useCallback(async (pageNum, topic) => {
@@ -71,9 +72,35 @@ export default function FeedView() {
     setSelectedItem(null)
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await refreshSubscriptions()
+      setItems([])
+      setPage(0)
+      setHasMore(true)
+      loadPage(0, selectedTopic)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const handleThumbnailLoaded = useCallback((id, url) => {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, thumbnailUrl: url } : i)))
+  }, [])
+
   return (
     <>
       <div className="topic-tabs">
+        <button
+          type="button"
+          className="btn topic-tab-refresh"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          title="Re-fetch all feeds for new items"
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
         {TOPIC_TABS.map((tab) => (
           <button
             key={tab.id}
@@ -91,6 +118,7 @@ export default function FeedView() {
             key={item.id}
             item={item}
             onClick={handleItemRead}
+            onThumbnailLoaded={handleThumbnailLoaded}
           />
         ))}
         <div ref={sentinelRef} style={{ height: 1 }} aria-hidden />

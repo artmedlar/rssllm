@@ -77,6 +77,18 @@ export async function initDb(pathToDb) {
     db.run('CREATE INDEX IF NOT EXISTS idx_items_topic ON items(topic)')
   }
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS engagement_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      duration_ms INTEGER,
+      at INTEGER NOT NULL
+    )
+  `)
+  db.run('CREATE INDEX IF NOT EXISTS idx_engagement_item ON engagement_events(item_id)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_engagement_type ON engagement_events(event_type)')
+
   persist()
 }
 
@@ -161,6 +173,26 @@ export function setFeedLastFetched(feedId, lastFetchedAt) {
   persist()
 }
 
+/** @param {number} itemId - Item id. @returns {{ link: string }|null} */
+export function getItemById(itemId) {
+  const d = getDb()
+  const stmt = d.prepare('SELECT link FROM items WHERE id = ?')
+  stmt.bind([Number(itemId)])
+  if (!stmt.step()) {
+    stmt.free()
+    return null
+  }
+  const row = stmt.getAsObject()
+  stmt.free()
+  return row
+}
+
+/** Update thumbnail for an item (e.g. after fetching og:image). */
+export function updateItemThumbnail(itemId, thumbnailUrl) {
+  getDb().run('UPDATE items SET thumbnail_url = ? WHERE id = ?', [thumbnailUrl, Number(itemId)])
+  persist()
+}
+
 /**
  * @param {number} page
  * @param {number} limit
@@ -221,6 +253,62 @@ export function getUnifiedFeed(page, limit, topic) {
   return { items, hasMore }
 }
 
+/**
+ * Fetch a pool of items (by date) for ranking. Used by getRankedFeed.
+ * @param {string} topic
+ * @param {number} poolSize
+ * @returns {Array<{ id: number, feedId: number, feedTitle: string, title: string, link: string, description: string, publishedAt: number, thumbnailUrl: string|null, readAt: number|null }>}
+ */
+export function getUnifiedFeedPool(topic, poolSize = 300) {
+  const d = getDb()
+  let topicClause = ''
+  if (topic && topic !== 'all') {
+    if (topic === 'other') {
+      topicClause = " AND (i.topic IN ('general', 'other') OR i.topic IS NULL)"
+    } else {
+      topicClause = ' AND i.topic = ?'
+    }
+  }
+  const baseQuery = `
+    SELECT
+      i.id,
+      i.feed_id AS feedId,
+      f.title AS feedTitle,
+      i.guid,
+      i.title,
+      i.link,
+      i.description,
+      i.published_at AS publishedAt,
+      i.thumbnail_url AS thumbnailUrl,
+      r.read_at AS readAt
+    FROM items i
+    JOIN feeds f ON f.id = i.feed_id
+    LEFT JOIN read_state r ON r.item_id = i.id
+    WHERE 1=1
+    ${topicClause}
+    ORDER BY i.published_at DESC
+    LIMIT ${Number(poolSize)}
+  `
+  const params = topic && topic !== 'all' && topic !== 'other' ? [topic] : []
+  const stmt = d.prepare(baseQuery)
+  if (params.length) stmt.bind(params)
+  const rows = []
+  while (stmt.step()) rows.push(stmt.getAsObject())
+  stmt.free()
+  return rows.map((row) => ({
+    id: row.id,
+    feedId: row.feedId,
+    feedTitle: row.feedTitle,
+    guid: row.guid,
+    title: row.title,
+    link: row.link,
+    description: row.description,
+    publishedAt: row.publishedAt,
+    thumbnailUrl: row.thumbnailUrl,
+    readAt: row.readAt,
+  }))
+}
+
 export function markRead(itemId) {
   const readAt = Date.now()
   getDb().run(
@@ -228,4 +316,55 @@ export function markRead(itemId) {
     [itemId, readAt]
   )
   persist()
+}
+
+/**
+ * @param {number} itemId
+ * @param {string} eventType - 'open' | 'view' | 'more_like' | 'less_like'
+ * @param {number} [durationMs]
+ */
+export function recordEngagement(itemId, eventType, durationMs = null) {
+  getDb().run(
+    'INSERT INTO engagement_events (item_id, event_type, duration_ms, at) VALUES (?, ?, ?, ?)',
+    [itemId, eventType, durationMs, Date.now()]
+  )
+  persist()
+}
+
+/**
+ * Get engagement counts per item (opens + views) for scoring. Returns Map<itemId, count>.
+ * @param {number} [sinceMs] - only events after this (optional)
+ */
+export function getEngagementCountsByItem(sinceMs = 0) {
+  const d = getDb()
+  const result = d.exec(
+    `SELECT item_id AS itemId, COUNT(*) AS cnt
+     FROM engagement_events
+     WHERE event_type IN ('open', 'view', 'more_like') AND at >= ${Number(sinceMs)}
+     GROUP BY item_id`
+  )
+  if (!result.length || !result[0].values) return new Map()
+  const m = new Map()
+  const cols = result[0].columns
+  const idx = (name) => cols.indexOf(name)
+  for (const row of result[0].values) {
+    m.set(row[idx('itemId')], row[idx('cnt')])
+  }
+  return m
+}
+
+/**
+ * Get item IDs with positive engagement (for similarity / user vector). Optionally since timestamp.
+ */
+export function getPositiveEngagedItemIds(sinceMs = 0, limit = 100) {
+  const d = getDb()
+  const result = d.exec(
+    `SELECT DISTINCT item_id AS itemId FROM engagement_events
+     WHERE event_type IN ('open', 'view', 'more_like') AND at >= ${Number(sinceMs)}
+     ORDER BY at DESC LIMIT ${Number(limit)}`
+  )
+  if (!result.length || !result[0].values) return []
+  const cols = result[0].columns
+  const idx = cols.indexOf('itemId')
+  return result[0].values.map((row) => row[idx])
 }

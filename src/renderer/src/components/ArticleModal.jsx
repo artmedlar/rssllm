@@ -1,22 +1,40 @@
-import { useEffect } from 'react'
-import { markRead, openExternal } from '../api'
+import { useEffect, useRef } from 'react'
+import { markRead, openExternal, recordEngagement } from '../api'
 
 export default function ArticleModal({ item, onClose }) {
+  const openedAtRef = useRef(null)
+
   useEffect(() => {
-    if (item?.id) markRead(item.id)
+    if (item?.id) {
+      markRead(item.id)
+      recordEngagement('open', item.id)
+      openedAtRef.current = Date.now()
+    }
   }, [item?.id])
 
   if (!item) return null
 
+  const handleClose = () => {
+    if (openedAtRef.current != null) {
+      const durationMs = Date.now() - openedAtRef.current
+      recordEngagement('view', item.id, durationMs)
+    }
+    onClose(item.id)
+  }
+
   const handleOpenOriginal = () => {
+    if (openedAtRef.current != null) {
+      const durationMs = Date.now() - openedAtRef.current
+      recordEngagement('view', item.id, durationMs)
+    }
     openExternal(item.link)
-    onClose()
+    onClose(item.id)
   }
 
   return (
     <div
       className="article-modal-overlay"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && handleClose()}
       role="dialog"
       aria-modal="true"
       aria-labelledby="article-modal-title"
@@ -26,7 +44,7 @@ export default function ArticleModal({ item, onClose }) {
           <h2 id="article-modal-title" className="article-modal-title">
             {item.title || '(no title)'}
           </h2>
-          <button type="button" className="btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="btn" onClick={handleClose} aria-label="Close">
             ×
           </button>
         </div>
@@ -41,7 +59,23 @@ export default function ArticleModal({ item, onClose }) {
           <button type="button" className="btn btn-primary" onClick={handleOpenOriginal}>
             Open original
           </button>
-          <button type="button" className="btn" onClick={onClose}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => recordEngagement('more_like', item.id)}
+            title="Show more like this"
+          >
+            More like this
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => recordEngagement('less_like', item.id)}
+            title="Show less like this"
+          >
+            Less like this
+          </button>
+          <button type="button" className="btn" onClick={handleClose}>
             Close
           </button>
         </div>

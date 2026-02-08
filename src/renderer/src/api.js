@@ -54,6 +54,13 @@ export async function removeSubscription(feedId) {
   return api.subscriptionsRemove(feedId)
 }
 
+/** Re-fetch all subscription feeds and merge new items. */
+export async function refreshSubscriptions() {
+  const api = getAPI()
+  if (!api?.subscriptionsRefresh) return { refreshed: 0 }
+  return api.subscriptionsRefresh()
+}
+
 /**
  * @param {number} itemId
  * @returns {Promise<boolean>}
@@ -70,4 +77,25 @@ export async function markRead(itemId) {
 export function openExternal(url) {
   const api = getAPI()
   if (api?.openExternal) api.openExternal(url)
+}
+
+/**
+ * @param {string} eventType - 'open' | 'view' | 'more_like' | 'less_like'
+ * @param {number} itemId
+ * @param {number} [durationMs]
+ */
+export function recordEngagement(eventType, itemId, durationMs) {
+  const api = getAPI()
+  if (api?.engagementRecord) api.engagementRecord(eventType, itemId, durationMs)
+}
+
+/**
+ * Fetch article page and extract og:image; persist as item thumbnail. Call when item has no thumbnail.
+ * @param {number} itemId
+ * @returns {Promise<{ itemId: number, thumbnailUrl: string|null }>}
+ */
+export function fetchThumbnailForItem(itemId) {
+  const api = getAPI()
+  if (!api?.thumbnailFetch) return Promise.resolve({ itemId, thumbnailUrl: null })
+  return api.thumbnailFetch(itemId)
 }

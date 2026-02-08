@@ -1,3 +1,6 @@
+import { useEffect, useRef } from 'react'
+import { fetchThumbnailForItem } from '../api'
+
 function formatTime(ms) {
   if (!ms) return ''
   const d = new Date(ms)
@@ -10,8 +13,17 @@ function formatTime(ms) {
   return d.toLocaleDateString()
 }
 
-export default function StoryCard({ item, onClick }) {
+export default function StoryCard({ item, onClick, onThumbnailLoaded }) {
   const isUnread = !item.readAt
+  const fetchStarted = useRef(false)
+
+  useEffect(() => {
+    if (item.thumbnailUrl || !item.link || !item.id || fetchStarted.current) return
+    fetchStarted.current = true
+    fetchThumbnailForItem(item.id).then((res) => {
+      if (res?.thumbnailUrl && onThumbnailLoaded) onThumbnailLoaded(item.id, res.thumbnailUrl)
+    })
+  }, [item.id, item.link, item.thumbnailUrl, onThumbnailLoaded])
 
   return (
     <article
