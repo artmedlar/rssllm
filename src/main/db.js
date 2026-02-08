@@ -70,6 +70,13 @@ export async function initDb(pathToDb) {
   db.run('CREATE INDEX IF NOT EXISTS idx_items_feed_published ON items(feed_id, published_at DESC)')
   db.run('CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at DESC)')
 
+  const tableInfo = db.exec("PRAGMA table_info(items)")
+  const hasTopic = tableInfo[0]?.values?.some((row) => row[1] === 'topic')
+  if (!hasTopic) {
+    db.run("ALTER TABLE items ADD COLUMN topic TEXT DEFAULT 'general'")
+    db.run('CREATE INDEX IF NOT EXISTS idx_items_topic ON items(topic)')
+  }
+
   persist()
 }
 
@@ -122,15 +129,17 @@ export function upsertItems(feedId, items) {
   const d = getDb()
   const created = Date.now()
   for (const it of items) {
+    const topic = it.topic || 'general'
     d.run(
-      `INSERT INTO items (feed_id, guid, link, title, description, published_at, thumbnail_url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO items (feed_id, guid, link, title, description, published_at, thumbnail_url, created_at, topic)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (feed_id, guid) DO UPDATE SET
          link = excluded.link,
          title = excluded.title,
          description = excluded.description,
          published_at = excluded.published_at,
-         thumbnail_url = excluded.thumbnail_url`,
+         thumbnail_url = excluded.thumbnail_url,
+         topic = excluded.topic`,
       [
         feedId,
         it.guid || it.link,
@@ -140,6 +149,7 @@ export function upsertItems(feedId, items) {
         it.publishedAt,
         it.thumbnailUrl ?? null,
         created,
+        topic,
       ]
     )
   }
@@ -151,10 +161,23 @@ export function setFeedLastFetched(feedId, lastFetchedAt) {
   persist()
 }
 
-export function getUnifiedFeed(page, limit) {
+/**
+ * @param {number} page
+ * @param {number} limit
+ * @param {string} [topic] - 'all' or empty = no filter; 'other' = general + other; else topic name
+ */
+export function getUnifiedFeed(page, limit, topic) {
   const d = getDb()
   const offset = page * limit
-  const result = d.exec(`
+  let topicClause = ''
+  if (topic && topic !== 'all') {
+    if (topic === 'other') {
+      topicClause = " AND (i.topic IN ('general', 'other') OR i.topic IS NULL)"
+    } else {
+      topicClause = ' AND i.topic = ?'
+    }
+  }
+  const baseQuery = `
     SELECT
       i.id,
       i.feed_id AS feedId,
@@ -169,25 +192,31 @@ export function getUnifiedFeed(page, limit) {
     FROM items i
     JOIN feeds f ON f.id = i.feed_id
     LEFT JOIN read_state r ON r.item_id = i.id
+    WHERE 1=1
+    ${topicClause}
     ORDER BY i.published_at DESC
-    LIMIT ${limit + 1} OFFSET ${offset}
-  `)
-  if (!result.length || !result[0].values) return { items: [], hasMore: false }
-  const cols = result[0].columns
-  const idx = (name) => cols.indexOf(name)
-  const rows = result[0].values
+    LIMIT ? OFFSET ?
+  `
+  const params = topic && topic !== 'all' && topic !== 'other' ? [topic, limit + 1, offset] : [limit + 1, offset]
+  const stmt = d.prepare(baseQuery)
+  stmt.bind(params)
+  const rows = []
+  while (stmt.step()) rows.push(stmt.getAsObject())
+  stmt.free()
+
   const hasMore = rows.length > limit
-  const items = (hasMore ? rows.slice(0, limit) : rows).map((row) => ({
-    id: row[idx('id')],
-    feedId: row[idx('feedId')],
-    feedTitle: row[idx('feedTitle')],
-    guid: row[idx('guid')],
-    title: row[idx('title')],
-    link: row[idx('link')],
-    description: row[idx('description')],
-    publishedAt: row[idx('publishedAt')],
-    thumbnailUrl: row[idx('thumbnailUrl')],
-    readAt: row[idx('readAt')],
+  const resultRows = hasMore ? rows.slice(0, limit) : rows
+  const items = resultRows.map((row) => ({
+    id: row.id,
+    feedId: row.feedId,
+    feedTitle: row.feedTitle,
+    guid: row.guid,
+    title: row.title,
+    link: row.link,
+    description: row.description,
+    publishedAt: row.publishedAt,
+    thumbnailUrl: row.thumbnailUrl,
+    readAt: row.readAt,
   }))
   return { items, hasMore }
 }

@@ -70,6 +70,35 @@ body {
   padding: var(--space-lg);
 }
 
+.topic-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topic-tabs button {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: var(--space-xs) var(--space-sm);
+  border: none;
+  background: none;
+  color: var(--color-tab-inactive);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.topic-tabs button:hover {
+  color: var(--color-text);
+}
+
+.topic-tabs button.active {
+  color: var(--color-tab-active);
+  font-weight: 600;
+}
+
 /* Story card */
 .story-card {
   display: flex;

@@ -3,6 +3,9 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { initDb, addFeed as dbAddFeed, getFeeds, getUnifiedFeed, markRead as dbMarkRead, upsertItems, setFeedLastFetched, removeFeed as dbRemoveFeed } from './db.js'
 import { fetchAndParse } from './feed.js'
+import { classifyTopic } from './classifier.js'
+
+const FEED_TOPICS = ['all', 'other', 'news', 'business', 'sports', 'tech', 'entertainment', 'science']
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -50,16 +53,21 @@ ipcMain.handle('subscriptions:list', () => getFeeds())
 ipcMain.handle('subscriptions:add', async (_event, url) => {
   if (!url || typeof url !== 'string') throw new Error('URL required')
   const { title, items } = await fetchAndParse(url)
+  const itemsWithTopic = items.map((it) => ({
+    ...it,
+    topic: classifyTopic(it.title, it.description),
+  }))
   const feedId = dbAddFeed(url, title)
-  if (items.length) {
-    upsertItems(feedId, items)
+  if (itemsWithTopic.length) {
+    upsertItems(feedId, itemsWithTopic)
   }
   setFeedLastFetched(feedId, Date.now())
   return { id: feedId, url, title }
 })
 
-ipcMain.handle('feed:get', (_event, page = 0, limit = 30) => {
-  return getUnifiedFeed(Number(page), Math.min(Number(limit) || 30, 100))
+ipcMain.handle('feed:get', (_event, page = 0, limit = 30, topic = 'all') => {
+  const safeTopic = FEED_TOPICS.includes(topic) ? topic : 'all'
+  return getUnifiedFeed(Number(page), Math.min(Number(limit) || 30, 100), safeTopic)
 })
 
 ipcMain.handle('feed:markRead', (_event, itemId) => {

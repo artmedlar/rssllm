@@ -5,7 +5,19 @@ import ArticleModal from './ArticleModal'
 
 const PAGE_SIZE = 20
 
+const TOPIC_TABS = [
+  { id: 'all', label: 'All' },
+  { id: 'news', label: 'News' },
+  { id: 'business', label: 'Business' },
+  { id: 'sports', label: 'Sports' },
+  { id: 'tech', label: 'Tech' },
+  { id: 'entertainment', label: 'Entertainment' },
+  { id: 'science', label: 'Science' },
+  { id: 'other', label: 'Other' },
+]
+
 export default function FeedView() {
+  const [selectedTopic, setSelectedTopic] = useState('all')
   const [items, setItems] = useState([])
   const [page, setPage] = useState(0)
   const [hasMore, setHasMore] = useState(true)
@@ -13,10 +25,10 @@ export default function FeedView() {
   const [selectedItem, setSelectedItem] = useState(null)
   const sentinelRef = useRef(null)
 
-  const loadPage = useCallback(async (pageNum) => {
+  const loadPage = useCallback(async (pageNum, topic) => {
     setLoading(true)
     try {
-      const { items: next, hasMore: more } = await getFeed(pageNum, PAGE_SIZE)
+      const { items: next, hasMore: more } = await getFeed(pageNum, PAGE_SIZE, topic)
       setItems((prev) => (pageNum === 0 ? next : [...prev, ...next]))
       setHasMore(more)
       setPage(pageNum)
@@ -26,22 +38,25 @@ export default function FeedView() {
   }, [])
 
   useEffect(() => {
-    loadPage(0)
-  }, [loadPage])
+    setItems([])
+    setPage(0)
+    setHasMore(true)
+    loadPage(0, selectedTopic)
+  }, [selectedTopic, loadPage])
 
   useEffect(() => {
     if (!sentinelRef.current || !hasMore || loading) return
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasMore && !loading) {
-          loadPage(page + 1)
+          loadPage(page + 1, selectedTopic)
         }
       },
       { rootMargin: '200px', threshold: 0 }
     )
     observer.observe(sentinelRef.current)
     return () => observer.disconnect()
-  }, [hasMore, loading, page, loadPage])
+  }, [hasMore, loading, page, selectedTopic, loadPage])
 
   const handleItemRead = (item) => {
     setSelectedItem(item)
@@ -58,6 +73,18 @@ export default function FeedView() {
 
   return (
     <>
+      <div className="topic-tabs">
+        {TOPIC_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={selectedTopic === tab.id ? 'active' : ''}
+            onClick={() => setSelectedTopic(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
       <div className="feed-list">
         {items.map((item) => (
           <StoryCard
@@ -79,7 +106,9 @@ export default function FeedView() {
         ) : null}
         {items.length === 0 && !loading ? (
           <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
-            No items yet. Add feeds in Subscriptions.
+            {selectedTopic === 'all'
+              ? 'No items yet. Add feeds in Subscriptions.'
+              : `No items in ${TOPIC_TABS.find((t) => t.id === selectedTopic)?.label ?? selectedTopic}.`}
           </p>
         ) : null}
       </div>
