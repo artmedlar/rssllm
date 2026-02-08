@@ -99,3 +99,10 @@ export function fetchThumbnailForItem(itemId) {
   if (!api?.thumbnailFetch) return Promise.resolve({ itemId, thumbnailUrl: null })
   return api.thumbnailFetch(itemId)
 }
+
+/** @returns {Promise<boolean>} True if Ollama is running (embeddings for "More like this"). */
+export function isOllamaAvailable() {
+  const api = getAPI()
+  if (!api?.ollamaAvailable) return Promise.resolve(false)
+  return api.ollamaAvailable()
+}

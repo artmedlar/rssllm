@@ -110,6 +110,13 @@ body {
   cursor: not-allowed;
 }
 
+.topic-tabs .topic-tabs-ollama {
+  margin-left: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 0.75rem;
+  color: var(--color-tab-inactive);
+}
+
 /* Story card */
 .story-card {
   display: flex;

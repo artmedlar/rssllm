@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getFeed, refreshSubscriptions } from '../api'
+import { getFeed, refreshSubscriptions, isOllamaAvailable } from '../api'
 import StoryCard from './StoryCard'
 import ArticleModal from './ArticleModal'
 
@@ -24,7 +24,15 @@ export default function FeedView() {
   const [loading, setLoading] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [ollamaAvailable, setOllamaAvailable] = useState(false)
   const sentinelRef = useRef(null)
+
+  useEffect(() => {
+    const check = () => isOllamaAvailable().then(setOllamaAvailable)
+    check()
+    const t = setInterval(check, 15000)
+    return () => clearInterval(t)
+  }, [])
 
   const loadPage = useCallback(async (pageNum, topic) => {
     setLoading(true)
@@ -101,6 +109,11 @@ export default function FeedView() {
         >
           {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
+        {ollamaAvailable ? (
+          <span className="topic-tabs-ollama" title="Ollama running: “More like this” uses similarity">
+            Similarity on
+          </span>
+        ) : null}
         {TOPIC_TABS.map((tab) => (
           <button
             key={tab.id}

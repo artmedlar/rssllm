@@ -89,6 +89,13 @@ export async function initDb(pathToDb) {
   db.run('CREATE INDEX IF NOT EXISTS idx_engagement_item ON engagement_events(item_id)')
   db.run('CREATE INDEX IF NOT EXISTS idx_engagement_type ON engagement_events(event_type)')
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS item_embeddings (
+      item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+      embedding TEXT NOT NULL
+    )
+  `)
+
   persist()
 }
 
@@ -185,6 +192,47 @@ export function getItemById(itemId) {
   const row = stmt.getAsObject()
   stmt.free()
   return row
+}
+
+/** @param {number} itemId - For embedding text. @returns {{ title: string, description: string }|null} */
+export function getItemTitleDescription(itemId) {
+  const d = getDb()
+  const stmt = d.prepare('SELECT title, description FROM items WHERE id = ?')
+  stmt.bind([Number(itemId)])
+  if (!stmt.step()) {
+    stmt.free()
+    return null
+  }
+  const row = stmt.getAsObject()
+  stmt.free()
+  return { title: row.title || '', description: row.description || '' }
+}
+
+/** @param {number} itemId - @returns {number[]|null} Cached embedding or null */
+export function getItemEmbedding(itemId) {
+  const d = getDb()
+  const stmt = d.prepare('SELECT embedding FROM item_embeddings WHERE item_id = ?')
+  stmt.bind([Number(itemId)])
+  if (!stmt.step()) {
+    stmt.free()
+    return null
+  }
+  const row = stmt.getAsObject()
+  stmt.free()
+  try {
+    return JSON.parse(row.embedding)
+  } catch {
+    return null
+  }
+}
+
+/** @param {number} itemId - @param {number[]} embedding */
+export function setItemEmbedding(itemId, embedding) {
+  getDb().run(
+    'INSERT INTO item_embeddings (item_id, embedding) VALUES (?, ?) ON CONFLICT (item_id) DO UPDATE SET embedding = excluded.embedding',
+    [Number(itemId), JSON.stringify(embedding)]
+  )
+  persist()
 }
 
 /** Update thumbnail for an item (e.g. after fetching og:image). */

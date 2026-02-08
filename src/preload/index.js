@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   engagementRecord: (eventType, itemId, durationMs) =>
     ipcRenderer.invoke('engagement:record', eventType, itemId, durationMs),
   thumbnailFetch: (itemId) => ipcRenderer.invoke('thumbnail:fetch', itemId),
+  ollamaAvailable: () => ipcRenderer.invoke('ollama:available'),
 })
