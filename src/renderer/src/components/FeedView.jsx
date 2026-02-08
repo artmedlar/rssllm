@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getFeed, refreshSubscriptions, isOllamaAvailable } from '../api'
+import { getFeed } from '../api'
 import StoryCard from './StoryCard'
 import ArticleModal from './ArticleModal'
 
@@ -7,6 +7,7 @@ const PAGE_SIZE = 20
 
 const TOPIC_TABS = [
   { id: 'all', label: 'All' },
+  { id: 'for_you', label: 'For you' },
   { id: 'news', label: 'News' },
   { id: 'business', label: 'Business' },
   { id: 'sports', label: 'Sports' },
@@ -16,28 +17,19 @@ const TOPIC_TABS = [
   { id: 'other', label: 'Other' },
 ]
 
-export default function FeedView() {
+export default function FeedView({ readFilter = 'unread', refreshKey = 0 }) {
   const [selectedTopic, setSelectedTopic] = useState('all')
   const [items, setItems] = useState([])
   const [page, setPage] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
-  const [refreshing, setRefreshing] = useState(false)
-  const [ollamaAvailable, setOllamaAvailable] = useState(false)
   const sentinelRef = useRef(null)
 
-  useEffect(() => {
-    const check = () => isOllamaAvailable().then(setOllamaAvailable)
-    check()
-    const t = setInterval(check, 15000)
-    return () => clearInterval(t)
-  }, [])
-
-  const loadPage = useCallback(async (pageNum, topic) => {
+  const loadPage = useCallback(async (pageNum, topic, filter) => {
     setLoading(true)
     try {
-      const { items: next, hasMore: more } = await getFeed(pageNum, PAGE_SIZE, topic)
+      const { items: next, hasMore: more } = await getFeed(pageNum, PAGE_SIZE, topic, filter)
       setItems((prev) => (pageNum === 0 ? next : [...prev, ...next]))
       setHasMore(more)
       setPage(pageNum)
@@ -50,22 +42,30 @@ export default function FeedView() {
     setItems([])
     setPage(0)
     setHasMore(true)
-    loadPage(0, selectedTopic)
-  }, [selectedTopic, loadPage])
+    loadPage(0, selectedTopic, readFilter)
+  }, [selectedTopic, readFilter, loadPage])
+
+  useEffect(() => {
+    if (refreshKey === 0) return
+    setItems([])
+    setPage(0)
+    setHasMore(true)
+    loadPage(0, selectedTopic, readFilter)
+  }, [refreshKey])
 
   useEffect(() => {
     if (!sentinelRef.current || !hasMore || loading) return
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasMore && !loading) {
-          loadPage(page + 1, selectedTopic)
+          loadPage(page + 1, selectedTopic, readFilter)
         }
       },
       { rootMargin: '200px', threshold: 0 }
     )
     observer.observe(sentinelRef.current)
     return () => observer.disconnect()
-  }, [hasMore, loading, page, selectedTopic, loadPage])
+  }, [hasMore, loading, page, selectedTopic, readFilter, loadPage])
 
   const handleItemRead = (item) => {
     setSelectedItem(item)
@@ -73,24 +73,15 @@ export default function FeedView() {
 
   const handleCloseArticle = (readItemId) => {
     if (readItemId) {
-      setItems((prev) =>
-        prev.map((i) => (i.id === readItemId ? { ...i, readAt: Date.now() } : i))
-      )
+      if (readFilter === 'unread') {
+        setItems((prev) => prev.filter((i) => i.id !== readItemId))
+      } else {
+        setItems((prev) =>
+          prev.map((i) => (i.id === readItemId ? { ...i, readAt: Date.now() } : i))
+        )
+      }
     }
     setSelectedItem(null)
-  }
-
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    try {
-      await refreshSubscriptions()
-      setItems([])
-      setPage(0)
-      setHasMore(true)
-      loadPage(0, selectedTopic)
-    } finally {
-      setRefreshing(false)
-    }
   }
 
   const handleThumbnailLoaded = useCallback((id, url) => {
@@ -100,20 +91,6 @@ export default function FeedView() {
   return (
     <>
       <div className="topic-tabs">
-        <button
-          type="button"
-          className="btn topic-tab-refresh"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          title="Re-fetch all feeds for new items"
-        >
-          {refreshing ? 'Refreshing…' : 'Refresh'}
-        </button>
-        {ollamaAvailable ? (
-          <span className="topic-tabs-ollama" title="Ollama running: “More like this” uses similarity">
-            Similarity on
-          </span>
-        ) : null}
         {TOPIC_TABS.map((tab) => (
           <button
             key={tab.id}
@@ -147,9 +124,15 @@ export default function FeedView() {
         ) : null}
         {items.length === 0 && !loading ? (
           <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
-            {selectedTopic === 'all'
-              ? 'No items yet. Add feeds in Subscriptions.'
-              : `No items in ${TOPIC_TABS.find((t) => t.id === selectedTopic)?.label ?? selectedTopic}.`}
+            {readFilter === 'read'
+              ? (selectedTopic === 'all'
+                ? 'Nothing read yet. Open articles from Feed to see them here.'
+                : `No read items in ${TOPIC_TABS.find((t) => t.id === selectedTopic)?.label ?? selectedTopic}.`)
+              : selectedTopic === 'for_you'
+                ? 'Open and read some articles first. For you uses your engagement to recommend similar items (needs Similarity).'
+                : (selectedTopic === 'all'
+                  ? 'No items yet. Add feeds in Subscriptions.'
+                  : `No items in ${TOPIC_TABS.find((t) => t.id === selectedTopic)?.label ?? selectedTopic}.`)}
           </p>
         ) : null}
       </div>

@@ -34,3 +34,7 @@ npm run dev
 
 - **GitHub:** [github.com/artmedlar/rssllm](https://github.com/artmedlar/rssllm)
 - Remote: `origin` → `https://github.com/artmedlar/rssllm.git`
+
+## Future ideas
+
+- **Text index of read items** – Store searchable text (title + description or full content) for read articles so users can quickly re-find something they’ve seen in the past (e.g. full-text search over “Already read”).

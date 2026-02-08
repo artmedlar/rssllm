@@ -35,13 +35,14 @@ export async function addSubscription(url) {
 /**
  * @param {number} [page=0]
  * @param {number} [limit=30]
- * @param {string} [topic='all'] - 'all' | 'news' | 'business' | 'sports' | 'tech' | 'entertainment' | 'science' | 'other'
+ * @param {string} [topic='all'] - 'all' | 'news' | 'business' | ...
+ * @param {'unread'|'read'} [readFilter='unread'] - 'unread' = to-read feed, 'read' = already-read list
  * @returns {Promise<{ items: Array<{ id: number, feedId: number, feedTitle: string, title: string, link: string, description: string, publishedAt: number, thumbnailUrl: string|null, readAt: number|null }>, hasMore: boolean }>}
  */
-export async function getFeed(page = 0, limit = 30, topic = 'all') {
+export async function getFeed(page = 0, limit = 30, topic = 'all', readFilter = 'unread') {
   const api = getAPI()
   if (!api?.feedGet) return { items: [], hasMore: false }
-  return api.feedGet(page, limit, topic)
+  return api.feedGet(page, limit, topic, readFilter)
 }
 
 /**

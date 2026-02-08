@@ -302,12 +302,13 @@ export function getUnifiedFeed(page, limit, topic) {
 }
 
 /**
- * Fetch a pool of items (by date) for ranking. Used by getRankedFeed.
+ * Fetch a pool of items for ranking. Used by getRankedFeed.
  * @param {string} topic
  * @param {number} poolSize
+ * @param {'unread'|'read'} [readFilter='unread'] - unread: only unread, by published_at; read: only read, by read_at desc
  * @returns {Array<{ id: number, feedId: number, feedTitle: string, title: string, link: string, description: string, publishedAt: number, thumbnailUrl: string|null, readAt: number|null }>}
  */
-export function getUnifiedFeedPool(topic, poolSize = 300) {
+export function getUnifiedFeedPool(topic, poolSize = 300, readFilter = 'unread') {
   const d = getDb()
   let topicClause = ''
   if (topic && topic !== 'all') {
@@ -334,7 +335,8 @@ export function getUnifiedFeedPool(topic, poolSize = 300) {
     LEFT JOIN read_state r ON r.item_id = i.id
     WHERE 1=1
     ${topicClause}
-    ORDER BY i.published_at DESC
+    ${readFilter === 'read' ? ' AND r.read_at IS NOT NULL' : ' AND r.read_at IS NULL'}
+    ${readFilter === 'read' ? ' ORDER BY r.read_at DESC' : ' ORDER BY i.published_at DESC'}
     LIMIT ${Number(poolSize)}
   `
   const params = topic && topic !== 'all' && topic !== 'other' ? [topic] : []

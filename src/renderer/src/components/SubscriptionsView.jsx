@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react'
 import { getSubscriptions, addSubscription, removeSubscription } from '../api'
 
+function formatLastFetched(ms) {
+  if (!ms) return 'Never'
+  const d = new Date(ms)
+  const now = Date.now()
+  const diff = now - d
+  if (diff < 60000) return 'Just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`
+  return d.toLocaleDateString()
+}
+
 export default function SubscriptionsView() {
   const [subscriptions, setSubscriptions] = useState([])
   const [addUrl, setAddUrl] = useState('')
@@ -60,11 +72,19 @@ export default function SubscriptionsView() {
       ) : null}
       <ul className="subscriptions-list">
         {subscriptions.map((s) => (
-          <li key={s.id}>
-            <span title={s.url}>{s.title || s.url}</span>
+          <li key={s.id} className="subscription-item">
+            <div className="subscription-item-body">
+              <strong className="subscription-item-title">{s.title || '(no title)'}</strong>
+              <p className="subscription-item-url" title={s.url}>
+                {s.url}
+              </p>
+              <p className="subscription-item-meta">
+                Last fetched: {formatLastFetched(s.lastFetchedAt)}
+              </p>
+            </div>
             <button
               type="button"
-              className="btn"
+              className="btn subscription-item-remove"
               onClick={() => handleRemove(s.id)}
               disabled={removingId === s.id}
               aria-label={`Remove ${s.title || s.url}`}

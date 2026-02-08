@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   subscriptionsAdd: (url) => ipcRenderer.invoke('subscriptions:add', url),
   subscriptionsRemove: (feedId) => ipcRenderer.invoke('subscriptions:remove', feedId),
   subscriptionsRefresh: () => ipcRenderer.invoke('subscriptions:refresh'),
-  feedGet: (page, limit, topic) => ipcRenderer.invoke('feed:get', page, limit, topic),
+  feedGet: (page, limit, topic, readFilter) => ipcRenderer.invoke('feed:get', page, limit, topic, readFilter),
   feedMarkRead: (itemId) => ipcRenderer.invoke('feed:markRead', itemId),
   openExternal: (url) => ipcRenderer.invoke('openExternal', url),
   engagementRecord: (eventType, itemId, durationMs) =>

@@ -8,7 +8,7 @@ import { classifyTopic } from './classifier.js'
 import { fetchOgImage } from './ogImage.js'
 import { isAvailable as ollamaIsAvailable, ensureRunning as ollamaEnsureRunning } from './ollama.js'
 
-const FEED_TOPICS = ['all', 'other', 'news', 'business', 'sports', 'tech', 'entertainment', 'science']
+const FEED_TOPICS = ['all', 'for_you', 'other', 'news', 'business', 'sports', 'tech', 'entertainment', 'science']
 
 /** When user clicks "More like this", next feed load boosts items similar to this id. Cleared after one use. */
 let lastMoreLikeItemId = null
@@ -73,11 +73,12 @@ ipcMain.handle('subscriptions:add', async (_event, url) => {
   return { id: feedId, url, title }
 })
 
-ipcMain.handle('feed:get', async (_event, page = 0, limit = 30, topic = 'all') => {
+ipcMain.handle('feed:get', async (_event, page = 0, limit = 30, topic = 'all', readFilter = 'unread') => {
   const safeTopic = FEED_TOPICS.includes(topic) ? topic : 'all'
-  const similarTo = lastMoreLikeItemId
-  lastMoreLikeItemId = null
-  return getRankedFeed(Number(page), Math.min(Number(limit) || 30, 100), safeTopic, similarTo)
+  const safeRead = readFilter === 'read' ? 'read' : 'unread'
+  const similarTo = safeRead === 'unread' ? lastMoreLikeItemId : null
+  if (safeRead === 'unread') lastMoreLikeItemId = null
+  return getRankedFeed(Number(page), Math.min(Number(limit) || 30, 100), safeTopic, similarTo, safeRead)
 })
 
 ipcMain.handle('feed:markRead', (_event, itemId) => {
