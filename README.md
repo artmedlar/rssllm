@@ -38,13 +38,23 @@ npm run icon    # generate app icons (run once)
 npm run dev     # start the app in dev mode
 ```
 
-### Ollama setup (optional)
+### Ollama setup (optional but recommended)
 
-If you have Ollama installed, the app will automatically:
-1. Start `ollama serve` if it's not running
-2. Pull the required models (`nomic-embed-text` for embeddings, `llama3.2` for scoring)
+Ollama runs AI models locally on your machine. It powers story clustering, personalized ranking, and newsworthiness scoring in OhAI!. The app works without it, but the experience is much better with it.
 
-To set it up manually:
+**Installing Ollama on macOS:**
+
+1. Download from [ollama.com/download](https://ollama.com/download) (or `brew install ollama`)
+2. Open the downloaded app -- it installs the `ollama` command-line tool and runs in the menu bar
+3. That's it. OhAI! will detect Ollama automatically and pull the models it needs.
+
+For other platforms, see the [Ollama installation guide](https://github.com/ollama/ollama#install).
+
+**What happens automatically:** When OhAI! starts, it will:
+1. Start Ollama if it's not already running
+2. Pull the required models: `nomic-embed-text` (~274MB) for embeddings and `llama3.2` (~2GB) for scoring
+
+**Manual setup** (if you prefer):
 
 ```bash
 ollama serve                    # start the server
@@ -52,7 +62,7 @@ ollama pull nomic-embed-text    # embedding model (~274MB)
 ollama pull llama3.2            # chat model for scoring (~2GB)
 ```
 
-The app works fine without Ollama -- you just won't get clustering, personalization, or LLM scoring.
+**Without Ollama:** The app still works -- you get topic tabs, feed aggregation, thumbnails, and recency/engagement-based ranking. You just won't get story clustering, the "For you" personalized feed, user affinity scoring, or LLM newsworthiness ratings.
 
 ### Building for distribution
 

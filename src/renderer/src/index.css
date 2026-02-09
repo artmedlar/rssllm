@@ -1,6 +1,7 @@
 /* Design tokens */
 :root {
   --color-bg: #fff;
+  --color-page-bg: #f0f4f9;
   --color-surface: #f8f9fa;
   --color-text: #202124;
   --color-text-secondary: #70757a;
@@ -28,7 +29,7 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: var(--color-surface);
+  background: var(--color-page-bg);
   color: var(--color-text);
   font-size: 15px;
   line-height: 1.5;
@@ -143,26 +144,30 @@ body {
   cursor: default;
 }
 .top-bar-refresh.refresh-ready {
-  color: #fff !important;
-  background: #0d9f4f !important;
-  border-radius: 14px !important;
-  font-size: 13px !important;
-  padding: 3px 10px !important;
-  font-weight: 600;
-  animation: pulse-green 2s ease-in-out infinite;
+  color: #0d9f4f !important;
+  animation: pulse-green 2.5s ease-in-out infinite;
 }
 @keyframes pulse-green {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(13, 159, 79, 0.3); }
-  50% { box-shadow: 0 0 0 6px rgba(13, 159, 79, 0); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
-.top-bar-similarity {
+.top-bar-ai {
   font-size: 11px;
   font-weight: 600;
   color: var(--color-accent);
   background: var(--color-accent-bg);
   padding: 2px 6px;
   border-radius: 4px;
+  user-select: none;
+  transition: opacity 0.3s;
+}
+.top-bar-ai.ai-active {
+  animation: pulse-blue 2s ease-in-out infinite;
+}
+@keyframes pulse-blue {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 /* ============ Main Content ============ */
@@ -183,7 +188,10 @@ body {
 }
 
 .feed-section {
-  /* each topic section */
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border-light);
 }
 
 .section-heading {
@@ -192,7 +200,7 @@ body {
   color: var(--color-text);
   margin: 0 0 var(--space-md);
   padding-bottom: var(--space-sm);
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: none;
 }
 
 .section-heading--link {
@@ -250,7 +258,10 @@ body {
 
 /* ============ Flat topic feed ============ */
 .topic-feed {
-  /* wrapper for single-topic infinite scroll */
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  border: 1px solid var(--color-border-light);
 }
 
 .topic-feed .feed-list {
@@ -301,6 +312,9 @@ body {
   font-size: 13px;
   color: var(--color-text-secondary);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card-title {
@@ -335,6 +349,14 @@ body {
   gap: 0;
   padding: 0;
   overflow: hidden;
+  border-color: var(--color-border-light);
+}
+/* Cards inside feed-section sit on white; soften their borders */
+.feed-section .card {
+  border-color: #e8eaed;
+}
+.feed-section .card-hero {
+  border-color: #e8eaed;
 }
 
 .section-grid .card-body {
@@ -410,22 +432,22 @@ body {
 }
 
 .cluster-badge {
-  font: inherit;
-  font-size: 12px;
-  color: var(--color-accent);
-  background: var(--color-accent-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  background: none;
   border: none;
-  border-radius: 12px;
-  padding: 2px 8px;
+  padding: 2px;
   cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
+  transition: color 0.15s;
+  line-height: 1;
 }
 .cluster-badge:hover {
-  background: #d2e3fc;
+  color: var(--color-accent);
 }
 .cluster-icon {
-  font-size: 11px;
+  display: block;
 }
 
 /* Cluster modal list */

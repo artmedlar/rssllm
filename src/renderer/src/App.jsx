@@ -106,14 +106,13 @@ export default function App() {
                   : 'Up to date'
             }
           >
-            {refreshState === 'ready'
-              ? `↻ ${pendingStatus.newItemCount}`
-              : refreshState === 'working'
-                ? '⟳'
-                : '↻'}
+            ↻
           </button>
           {ollamaAvailable ? (
-            <span className="top-bar-similarity" title="Ollama running: similarity enabled">
+            <span
+              className={`top-bar-ai ${pendingStatus.cycleInProgress ? 'ai-active' : ''}`}
+              title={pendingStatus.cycleInProgress ? 'AI processing...' : 'AI enabled'}
+            >
               AI
             </span>
           ) : null}

@@ -11,19 +11,27 @@ const EMBED_MODEL = 'nomic-embed-text'
 const CHAT_MODEL = 'llama3.2'
 
 let _available = null
+let _lastCheck = 0
+const RECHECK_INTERVAL_MS = 30000 // retry every 30s if previously unavailable
 
 /**
  * @returns {Promise<boolean>}
  */
 export async function isAvailable() {
-  if (_available === false) return false
+  // If previously unavailable, allow periodic rechecks
+  if (_available === false && Date.now() - _lastCheck < RECHECK_INTERVAL_MS) return false
   try {
     const r = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(2000) })
-    if (!r.ok) return false
+    if (!r.ok) {
+      _available = false
+      _lastCheck = Date.now()
+      return false
+    }
     _available = true
     return true
   } catch {
     _available = false
+    _lastCheck = Date.now()
     return false
   }
 }
