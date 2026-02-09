@@ -1,6 +1,7 @@
 /**
- * Rank feed by recency + engagement. When Ollama is available and user clicked
- * "More like this", add similarity boost from embeddings.
+ * Multi-signal ranking: recency, user engagement, source reputation,
+ * cluster size (cross-source signal), user affinity (embedding similarity),
+ * and LLM newsworthiness score.
  */
 import {
   getUnifiedFeedPool,
@@ -8,34 +9,29 @@ import {
   getItemTitleDescription,
   getItemEmbedding,
   setItemEmbedding,
+  getFeedEngagementRates,
+  getClusterSizesForItems,
+  getRecentEngagementEmbeddings,
+  getNewsworthinessScores,
 } from './db.js'
 import { isAvailable, getEmbedding } from './ollama.js'
 
-const RECENCY_WEIGHT = 1
-const ENGAGEMENT_WEIGHT = 0.8
-const SIMILARITY_WEIGHT = 1.2
+// Scoring weights
+const RECENCY_WEIGHT = 1.0
+const ENGAGEMENT_WEIGHT = 0.6
+const SOURCE_REP_WEIGHT = 0.5
+const CLUSTER_WEIGHT = 0.7
+const AFFINITY_WEIGHT = 1.0
+const NEWSWORTHINESS_WEIGHT = 0.8
 const POOL_SIZE = 300
-const SIMILARITY_TOP_N = 50
 const EMBED_CONCURRENCY = 5
 const FOR_YOU_SEED_COUNT = 25
 const FOR_YOU_SIMILARITY_WEIGHT = 1.4
 
-/**
- * Score = recency (newer = higher) + log(1 + engagement count).
- */
-function scoreItem(publishedAt, engagementCount, now) {
-  const hoursAgo = (now - publishedAt) / (3600 * 1000)
-  const recencyScore = RECENCY_WEIGHT / (1 + hoursAgo / 24)
-  const engagementScore = ENGAGEMENT_WEIGHT * Math.log(1 + (engagementCount || 0))
-  return recencyScore + engagementScore
-}
-
-/** Cosine similarity [0, 1]. Returns 0 if either vector is missing or zero. */
+/** Cosine similarity [0, 1]. */
 function cosineSimilarity(a, b) {
   if (!a?.length || !b?.length || a.length !== b.length) return 0
-  let dot = 0
-  let normA = 0
-  let normB = 0
+  let dot = 0, normA = 0, normB = 0
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i]
     normA += a[i] * a[i]
@@ -43,15 +39,47 @@ function cosineSimilarity(a, b) {
   }
   const denom = Math.sqrt(normA) * Math.sqrt(normB)
   if (denom === 0) return 0
-  const cos = dot / denom
-  return Math.max(0, Math.min(1, (cos + 1) / 2))
+  return Math.max(0, Math.min(1, (dot / denom + 1) / 2))
+}
+
+/** Average multiple embedding vectors into one "interest profile" vector. */
+function averageEmbeddings(embeddings) {
+  if (!embeddings.length) return null
+  const dim = embeddings[0].length
+  const avg = new Array(dim).fill(0)
+  for (const emb of embeddings) {
+    for (let i = 0; i < dim; i++) avg[i] += emb[i]
+  }
+  for (let i = 0; i < dim; i++) avg[i] /= embeddings.length
+  return avg
 }
 
 /**
- * Get embedding for item: from cache or compute via Ollama and store.
- * @param {number} itemId
- * @param {string} text - title + description for embedding
- * @returns {Promise<number[]|null>}
+ * Multi-signal score for a single item.
+ * @param {object} item
+ * @param {number} now
+ * @param {number} engagementCount
+ * @param {number} sourceReputation
+ * @param {number} clusterSize
+ * @param {number} affinityScore - cosine similarity to user interest profile
+ * @param {number} newsworthinessScore - LLM score 1-10 (0 if not scored)
+ */
+function scoreItem(item, now, engagementCount, sourceReputation, clusterSize, affinityScore, newsworthinessScore) {
+  const hoursAgo = (now - item.publishedAt) / (3600 * 1000)
+  const recency = RECENCY_WEIGHT / (1 + hoursAgo / 24)
+  const engagement = ENGAGEMENT_WEIGHT * Math.log(1 + (engagementCount || 0))
+  const sourceRep = SOURCE_REP_WEIGHT * Math.log(1 + (sourceReputation || 0))
+  const cluster = CLUSTER_WEIGHT * Math.log(1 + Math.max(0, (clusterSize || 1) - 1))
+  const affinity = AFFINITY_WEIGHT * (affinityScore || 0)
+  // Normalize LLM score from 1-10 to 0-1, then apply weight. Score of 5 = neutral (0.0 boost).
+  const nw = newsworthinessScore > 0
+    ? NEWSWORTHINESS_WEIGHT * ((newsworthinessScore - 5) / 5)
+    : 0
+  return recency + engagement + sourceRep + cluster + affinity + nw
+}
+
+/**
+ * Get embedding for item: from cache or compute via Ollama.
  */
 async function getItemEmbeddingOrCompute(itemId, text) {
   const cached = getItemEmbedding(itemId)
@@ -64,10 +92,7 @@ async function getItemEmbeddingOrCompute(itemId, text) {
 }
 
 /**
- * Fetch embeddings for items in batches to avoid overwhelming Ollama.
- * @param {{ id: number }[]} items
- * @param {(id: number) => { title: string, description: string }|null} getText
- * @returns {Promise<Map<number, number[]>>}
+ * Fetch embeddings for items in batches.
  */
 async function getEmbeddingsForItems(items, getText) {
   const out = new Map()
@@ -88,9 +113,7 @@ async function getEmbeddingsForItems(items, getText) {
 }
 
 /**
- * "For you" feed: rank unread items by similarity to highest-engagement items (seeds).
- * Seeds are excluded from results so we never recommend something already seen.
- * @returns {Promise<{ items: any[], hasMore: boolean }>}
+ * "For you" feed: rank by similarity to engagement seeds.
  */
 async function getForYouRankedFeed(page, limit) {
   const pool = getUnifiedFeedPool('all', POOL_SIZE, 'unread')
@@ -105,15 +128,15 @@ async function getForYouRankedFeed(page, limit) {
   const now = Date.now()
   let scored = poolExcludingSeeds.map((item) => ({
     ...item,
-    _score: scoreItem(item.publishedAt, engagementCounts.get(item.id) || 0, now),
+    _score: RECENCY_WEIGHT / (1 + (now - item.publishedAt) / (3600 * 1000 * 24)) +
+            ENGAGEMENT_WEIGHT * Math.log(1 + (engagementCounts.get(item.id) || 0)),
   }))
 
   const ollamaOk = seedIds.length > 0 && (await isAvailable())
   if (ollamaOk) {
-    const seedTexts = new Map(seedIds.map((id) => [id, getItemTitleDescription(id)]))
     const seedEmbeddings = []
     for (const id of seedIds) {
-      const text = seedTexts.get(id)
+      const text = getItemTitleDescription(id)
       const emb = await getItemEmbeddingOrCompute(id, text)
       if (emb?.length) seedEmbeddings.push(emb)
     }
@@ -126,21 +149,18 @@ async function getForYouRankedFeed(page, limit) {
       for (const item of scored) {
         const emb = itemEmbeddings.get(item.id)
         if (emb) {
-          let totalSim = 0
-          let n = 0
+          let totalSim = 0, n = 0
           for (const seedEmb of seedEmbeddings) {
             totalSim += cosineSimilarity(emb, seedEmb)
-            n += 1
+            n++
           }
           if (n > 0) item._score += FOR_YOU_SIMILARITY_WEIGHT * (totalSim / n)
         }
       }
-      scored.sort((a, b) => b._score - a._score)
     }
-  } else {
-    scored.sort((a, b) => b._score - a._score)
   }
 
+  scored.sort((a, b) => b._score - a._score)
   const offset = page * limit
   const slice = scored.slice(offset, offset + limit + 1)
   const hasMore = slice.length > limit
@@ -149,14 +169,10 @@ async function getForYouRankedFeed(page, limit) {
 }
 
 /**
- * @param {number} page
- * @param {number} limit
- * @param {string} [topic]
- * @param {number} [similarToItemId] - When set and Ollama available, boost items similar to this (unread only)
- * @param {'unread'|'read'} [readFilter='unread'] - unread: to-read feed (ranked); read: already-read list (by read_at desc)
- * @returns {Promise<{ items: import('./db.js').getUnifiedFeedPool extends () => infer R ? R[number][] : never[], hasMore: boolean }>}
+ * Main ranked feed with multi-signal scoring.
  */
 export async function getRankedFeed(page, limit, topic = 'all', similarToItemId = null, readFilter = 'unread') {
+  // Archive: just return by read time
   if (readFilter === 'read') {
     const pool = getUnifiedFeedPool(topic, POOL_SIZE, readFilter)
     const offset = page * limit
@@ -170,31 +186,55 @@ export async function getRankedFeed(page, limit, topic = 'all', similarToItemId 
 
   const pool = getUnifiedFeedPool(topic, POOL_SIZE, readFilter)
   const engagementCounts = getEngagementCountsByItem(0)
+  const feedEngagementRates = getFeedEngagementRates()
+  const itemIds = pool.map((i) => i.id)
+  const clusterSizes = getClusterSizesForItems(itemIds)
+  const nwScores = getNewsworthinessScores(itemIds)
   const now = Date.now()
 
-  let scored = pool.map((item) => ({
-    ...item,
-    _score: scoreItem(item.publishedAt, engagementCounts.get(item.id) || 0, now),
-  }))
+  // Compute user interest profile for affinity scoring
+  let interestProfile = null
+  const ollamaOk = await isAvailable()
+  if (ollamaOk) {
+    const recentEmbeddings = getRecentEngagementEmbeddings(30)
+    interestProfile = averageEmbeddings(recentEmbeddings)
+  }
+
+  // Score all items
+  const scored = pool.map((item) => {
+    const engCount = engagementCounts.get(item.id) || 0
+    const sourceRep = feedEngagementRates.get(item.feedId) || 0
+    const cSize = clusterSizes.get(item.id) || 1
+    const nw = nwScores.get(item.id) || 0
+
+    let affinity = 0
+    if (interestProfile) {
+      const emb = getItemEmbedding(item.id)
+      if (emb) affinity = cosineSimilarity(emb, interestProfile)
+    }
+
+    return {
+      ...item,
+      _score: scoreItem(item, now, engCount, sourceRep, cSize, affinity, nw),
+    }
+  })
+
   scored.sort((a, b) => b._score - a._score)
 
-  const ollamaOk = similarToItemId != null && (await isAvailable())
-  if (ollamaOk && similarToItemId) {
+  // "More like this" similarity boost on top of base scoring
+  if (similarToItemId && ollamaOk) {
     const seedText = getItemTitleDescription(similarToItemId)
     const seedEmb = await getItemEmbeddingOrCompute(similarToItemId, seedText)
     if (seedEmb?.length) {
-      const topForSimilarity = scored.slice(0, SIMILARITY_TOP_N)
+      const top50 = scored.slice(0, 50)
       const getText = (id) => {
         const it = pool.find((i) => i.id === id)
         return it ? { title: it.title, description: it.description } : null
       }
-      const embeddings = await getEmbeddingsForItems(topForSimilarity, getText)
+      const embeddings = await getEmbeddingsForItems(top50, getText)
       for (const item of scored) {
         const emb = embeddings.get(item.id)
-        if (emb) {
-          const sim = cosineSimilarity(seedEmb, emb)
-          item._score += SIMILARITY_WEIGHT * sim
-        }
+        if (emb) item._score += 1.2 * cosineSimilarity(seedEmb, emb)
       }
       scored.sort((a, b) => b._score - a._score)
     }
@@ -204,6 +244,5 @@ export async function getRankedFeed(page, limit, topic = 'all', similarToItemId 
   const slice = scored.slice(offset, offset + limit + 1)
   const hasMore = slice.length > limit
   const items = (hasMore ? slice.slice(0, limit) : slice).map(({ _score, ...item }) => item)
-
   return { items, hasMore }
 }

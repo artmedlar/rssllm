@@ -107,3 +107,35 @@ export function isOllamaAvailable() {
   if (!api?.ollamaAvailable) return Promise.resolve(false)
   return api.ollamaAvailable()
 }
+
+/**
+ * Get the number of sources in a story cluster for an item.
+ * @param {number} itemId
+ * @returns {Promise<number>}
+ */
+export function getClusterSize(itemId) {
+  const api = getAPI()
+  if (!api?.clusterSize) return Promise.resolve(0)
+  return api.clusterSize(itemId)
+}
+
+/**
+ * Get all articles in the same cluster as the given item.
+ * @param {number} itemId
+ * @returns {Promise<Array>}
+ */
+export function getClusterMembersForItem(itemId) {
+  const api = getAPI()
+  if (!api?.clusterMembers) return Promise.resolve([])
+  return api.clusterMembers(itemId)
+}
+
+/**
+ * Get background processing status (new items pending, cycle in progress, etc.)
+ * @returns {Promise<{ newItemCount: number, hasChanges: boolean, cycleInProgress: boolean, lastCycleAt: number }>}
+ */
+export function getBackgroundStatus() {
+  const api = getAPI()
+  if (!api?.backgroundStatus) return Promise.resolve({ newItemCount: 0, hasChanges: false, cycleInProgress: false, lastCycleAt: 0 })
+  return api.backgroundStatus()
+}

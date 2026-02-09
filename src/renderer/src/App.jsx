@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import FeedView from './components/FeedView'
 import SubscriptionsView from './components/SubscriptionsView'
-import { refreshSubscriptions, isOllamaAvailable } from './api'
+import { refreshSubscriptions, isOllamaAvailable, getBackgroundStatus } from './api'
 
 const TOPIC_TABS = [
   { id: 'home', label: 'Home' },
@@ -20,8 +20,8 @@ export default function App() {
   const [showSubscriptions, setShowSubscriptions] = useState(false)
   const [readFilter, setReadFilter] = useState('unread')
   const [refreshKey, setRefreshKey] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
   const [ollamaAvailable, setOllamaAvailable] = useState(false)
+  const [pendingStatus, setPendingStatus] = useState({ newItemCount: 0, hasChanges: false, cycleInProgress: false })
 
   useEffect(() => {
     const check = () => isOllamaAvailable().then(setOllamaAvailable)
@@ -30,20 +30,31 @@ export default function App() {
     return () => clearInterval(t)
   }, [])
 
+  // Poll background status every 5 seconds
+  useEffect(() => {
+    const poll = () => getBackgroundStatus().then(setPendingStatus)
+    poll()
+    const t = setInterval(poll, 5000)
+    return () => clearInterval(t)
+  }, [])
+
   const handleRefresh = async () => {
-    setRefreshing(true)
-    try {
-      await refreshSubscriptions()
-      setRefreshKey((k) => k + 1)
-    } finally {
-      setRefreshing(false)
-    }
+    if (!pendingStatus.hasChanges) return // no-op if nothing pending
+    await refreshSubscriptions()
+    setRefreshKey((k) => k + 1)
+    setPendingStatus((s) => ({ ...s, newItemCount: 0, hasChanges: false }))
   }
 
   const handleTopicClick = (topicId) => {
     setSelectedTopic(topicId)
     setShowSubscriptions(false)
   }
+
+  const refreshState = pendingStatus.hasChanges
+    ? 'ready'            // green: new items available
+    : pendingStatus.cycleInProgress
+      ? 'working'        // subtle: background is fetching
+      : 'idle'           // normal: nothing happening
 
   return (
     <div className="app-layout">
@@ -84,12 +95,22 @@ export default function App() {
           </button>
           <button
             type="button"
-            className="top-bar-refresh"
+            className={`top-bar-refresh ${refreshState === 'ready' ? 'refresh-ready' : ''}`}
             onClick={handleRefresh}
-            disabled={refreshing}
-            title="Re-fetch all feeds"
+            disabled={refreshState === 'idle'}
+            title={
+              refreshState === 'ready'
+                ? `${pendingStatus.newItemCount} new item${pendingStatus.newItemCount !== 1 ? 's' : ''} available`
+                : refreshState === 'working'
+                  ? 'Checking feeds...'
+                  : 'Up to date'
+            }
           >
-            {refreshing ? 'Refreshing…' : '↻'}
+            {refreshState === 'ready'
+              ? `↻ ${pendingStatus.newItemCount}`
+              : refreshState === 'working'
+                ? '⟳'
+                : '↻'}
           </button>
           {ollamaAvailable ? (
             <span className="top-bar-similarity" title="Ollama running: similarity enabled">

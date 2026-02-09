@@ -2,12 +2,13 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
-import { initDb, addFeed as dbAddFeed, getFeeds, setFeedLastFetched, markRead as dbMarkRead, upsertItems, removeFeed as dbRemoveFeed, recordEngagement as dbRecordEngagement, getItemById, updateItemThumbnail } from './db.js'
+import { initDb, addFeed as dbAddFeed, getFeeds, setFeedLastFetched, markRead as dbMarkRead, upsertItems, removeFeed as dbRemoveFeed, recordEngagement as dbRecordEngagement, getItemById, updateItemThumbnail, getClusterSizeForItem, getClusterMembers, getClusterForItem } from './db.js'
 import { getRankedFeed } from './rank.js'
 import { fetchAndParse } from './feed.js'
 import { classifyTopic } from './classifier.js'
 import { fetchOgImage } from './ogImage.js'
 import { isAvailable as ollamaIsAvailable, ensureRunning as ollamaEnsureRunning } from './ollama.js'
+import { start as startBackgroundLoop, getPendingStatus, applyPending } from './backgroundLoop.js'
 
 const FEED_TOPICS = ['all', 'for_you', 'other', 'news', 'business', 'sports', 'tech', 'entertainment', 'science']
 
@@ -57,6 +58,7 @@ app.whenReady().then(async () => {
   createWindow()
 
   ollamaEnsureRunning()
+  startBackgroundLoop()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -114,22 +116,13 @@ ipcMain.handle('subscriptions:remove', (_event, feedId) => {
 })
 
 ipcMain.handle('subscriptions:refresh', async () => {
-  const feeds = getFeeds()
-  for (const feed of feeds) {
-    try {
-      const { items } = await fetchAndParse(feed.url)
-      const itemsWithTopic = items.map((it) => ({
-        ...it,
-        topic: classifyTopic(it.title, it.description),
-      }))
-      if (itemsWithTopic.length) upsertItems(feed.id, itemsWithTopic)
-      setFeedLastFetched(feed.id, Date.now())
-    } catch (_) {
-      // skip failed feed, continue with others
-    }
-  }
-  return { refreshed: feeds.length }
+  // "Refresh" now means: apply pending background items so the UI re-reads from DB.
+  // The background loop handles actual feed fetching continuously.
+  const result = applyPending()
+  return { refreshed: result.applied }
 })
+
+ipcMain.handle('background:status', () => getPendingStatus())
 
 /** Per-host queue: max 1 concurrent fetch per hostname to avoid 429 rate limits. */
 const hostQueues = new Map()
@@ -163,6 +156,16 @@ ipcMain.handle('thumbnail:fetch', (_event, itemId) => {
 })
 
 ipcMain.handle('ollama:available', async () => ollamaIsAvailable())
+
+ipcMain.handle('cluster:size', (_event, itemId) => {
+  return getClusterSizeForItem(Number(itemId))
+})
+
+ipcMain.handle('cluster:members', (_event, itemId) => {
+  const clusterId = getClusterForItem(Number(itemId))
+  if (clusterId == null) return []
+  return getClusterMembers(clusterId)
+})
 
 ipcMain.handle('openExternal', (_event, url) => {
   if (url && typeof url === 'string') shell.openExternal(url)

@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process'
 
 const OLLAMA_URL = 'http://127.0.0.1:11434'
 const EMBED_MODEL = 'nomic-embed-text'
+const CHAT_MODEL = 'llama3.2'
 
 let _available = null
 
@@ -38,15 +39,36 @@ export function ensureRunning() {
     try {
       const p = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
       p.unref()
-      // Give the server a moment to start, then ensure embed model is present
       setTimeout(() => {
         try {
-          const pull = spawn('ollama', ['pull', EMBED_MODEL], { detached: true, stdio: 'ignore' })
-          pull.unref()
+          spawn('ollama', ['pull', EMBED_MODEL], { detached: true, stdio: 'ignore' }).unref()
+          spawn('ollama', ['pull', CHAT_MODEL], { detached: true, stdio: 'ignore' }).unref()
         } catch (_) {}
       }, 5000)
     } catch (_) {}
   })
+}
+
+/**
+ * Send a prompt to the LLM and get a text response. Used for newsworthiness scoring.
+ * @param {string} prompt
+ * @returns {Promise<string|null>}
+ */
+export async function generate(prompt) {
+  if (!prompt?.trim()) return null
+  try {
+    const r = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: CHAT_MODEL, prompt, stream: false }),
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!r.ok) return null
+    const data = await r.json()
+    return data.response?.trim() ?? null
+  } catch {
+    return null
+  }
 }
 
 /**

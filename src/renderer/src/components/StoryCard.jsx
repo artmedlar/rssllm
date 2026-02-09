@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { fetchThumbnailForItem } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { fetchThumbnailForItem, getClusterSize } from '../api'
 
 function formatTime(ms) {
   if (!ms) return ''
@@ -13,12 +13,9 @@ function formatTime(ms) {
   return d.toLocaleDateString()
 }
 
-/**
- * Standard compact card: source on top, headline, time, small thumbnail on right.
- * Google News style.
- */
-export default function StoryCard({ item, onClick, onThumbnailLoaded, variant = 'standard' }) {
+export default function StoryCard({ item, onClick, onThumbnailLoaded, onClusterClick, variant = 'standard' }) {
   const fetchStarted = useRef(false)
+  const [clusterSize, setClusterSize] = useState(0)
 
   useEffect(() => {
     if (item.thumbnailUrl || !item.link || !item.id || fetchStarted.current) return
@@ -28,6 +25,13 @@ export default function StoryCard({ item, onClick, onThumbnailLoaded, variant = 
     })
   }, [item.id, item.link, item.thumbnailUrl, onThumbnailLoaded])
 
+  useEffect(() => {
+    if (!item.id) return
+    getClusterSize(item.id).then((size) => {
+      if (size > 1) setClusterSize(size)
+    })
+  }, [item.id])
+
   const handleClick = () => onClick(item)
   const handleKey = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -35,6 +39,19 @@ export default function StoryCard({ item, onClick, onThumbnailLoaded, variant = 
       onClick(item)
     }
   }
+
+  const clusterBadge = clusterSize > 1 ? (
+    <button
+      className="cluster-badge"
+      onClick={(e) => {
+        e.stopPropagation()
+        onClusterClick?.(item)
+      }}
+      title={`${clusterSize} sources covering this story`}
+    >
+      <span className="cluster-icon">&#x1F4C4;</span> {clusterSize} sources
+    </button>
+  ) : null
 
   if (variant === 'hero') {
     return (
@@ -50,19 +67,24 @@ export default function StoryCard({ item, onClick, onThumbnailLoaded, variant = 
           {item.description ? (
             <p className="card-hero-snippet">{item.description}</p>
           ) : null}
-          <span className="card-time">{formatTime(item.publishedAt)}</span>
+          <div className="card-hero-footer">
+            <span className="card-time">{formatTime(item.publishedAt)}</span>
+            {clusterBadge}
+          </div>
         </div>
       </article>
     )
   }
 
-  // Standard compact card
   return (
     <article className="card" onClick={handleClick} role="button" tabIndex={0} onKeyDown={handleKey}>
       <div className="card-body">
         <span className="card-source">{item.feedTitle}</span>
         <h3 className="card-title">{item.title || '(no title)'}</h3>
-        <span className="card-time">{formatTime(item.publishedAt)}</span>
+        <div className="card-footer">
+          <span className="card-time">{formatTime(item.publishedAt)}</span>
+          {clusterBadge}
+        </div>
       </div>
       {item.thumbnailUrl ? (
         <img src={item.thumbnailUrl} alt="" className="card-thumb" loading="lazy" />

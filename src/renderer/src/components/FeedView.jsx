@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { getFeed } from '../api'
 import StoryCard from './StoryCard'
 import ArticleModal from './ArticleModal'
+import ClusterModal from './ClusterModal'
 
 const SECTION_TOPICS = [
   { id: 'news', label: 'News' },
@@ -18,6 +19,7 @@ const SECTION_SIZE = 6
 
 export default function FeedView({ selectedTopic = 'home', readFilter = 'unread', refreshKey = 0, onNavigateTopic }) {
   const [selectedItem, setSelectedItem] = useState(null)
+  const [clusterItem, setClusterItem] = useState(null)
 
   // For "home" mode: sectioned data
   const [topStories, setTopStories] = useState([])
@@ -196,6 +198,7 @@ export default function FeedView({ selectedTopic = 'home', readFilter = 'unread'
                   variant="hero"
                   onClick={handleItemClick}
                   onThumbnailLoaded={handleThumbnailLoaded}
+                  onClusterClick={setClusterItem}
                 />
               )}
               <div className="top-stories-sidebar">
@@ -205,6 +208,7 @@ export default function FeedView({ selectedTopic = 'home', readFilter = 'unread'
                     item={item}
                     onClick={handleItemClick}
                     onThumbnailLoaded={handleThumbnailLoaded}
+                    onClusterClick={setClusterItem}
                   />
                 ))}
               </div>
@@ -230,6 +234,7 @@ export default function FeedView({ selectedTopic = 'home', readFilter = 'unread'
                   item={item}
                   onClick={handleItemClick}
                   onThumbnailLoaded={handleThumbnailLoaded}
+                  onClusterClick={setClusterItem}
                 />
               ))}
             </div>
@@ -238,6 +243,9 @@ export default function FeedView({ selectedTopic = 'home', readFilter = 'unread'
 
         {selectedItem ? (
           <ArticleModal item={selectedItem} onClose={() => handleCloseArticle(selectedItem.id)} />
+        ) : null}
+        {clusterItem ? (
+          <ClusterModal item={clusterItem} onClose={() => setClusterItem(null)} />
         ) : null}
       </div>
     )
@@ -253,6 +261,7 @@ export default function FeedView({ selectedTopic = 'home', readFilter = 'unread'
             item={item}
             onClick={handleItemClick}
             onThumbnailLoaded={handleThumbnailLoaded}
+            onClusterClick={setClusterItem}
           />
         ))}
         <div ref={sentinelRef} style={{ height: 1 }} aria-hidden />
@@ -272,6 +281,9 @@ export default function FeedView({ selectedTopic = 'home', readFilter = 'unread'
       </div>
       {selectedItem ? (
         <ArticleModal item={selectedItem} onClose={() => handleCloseArticle(selectedItem.id)} />
+      ) : null}
+      {clusterItem ? (
+        <ClusterModal item={clusterItem} onClose={() => setClusterItem(null)} />
       ) : null}
     </div>
   )
