@@ -26,8 +26,8 @@
     "sharp": "^0.33.5"
   },
   "build": {
-    "appId": "com.rssreader.app",
-    "productName": "rssllm",
+    "appId": "com.ohai.app",
+    "productName": "OhAI!",
     "directories": { "output": "release" },
     "files": ["dist/**/*", "dist-electron/**/*"],
     "mac": { "category": "public.app-category.news", "icon": "build/icon.icns" },

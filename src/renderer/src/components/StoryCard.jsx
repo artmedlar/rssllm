@@ -13,8 +13,11 @@ function formatTime(ms) {
   return d.toLocaleDateString()
 }
 
-export default function StoryCard({ item, onClick, onThumbnailLoaded }) {
-  const isUnread = !item.readAt
+/**
+ * Standard compact card: source on top, headline, time, small thumbnail on right.
+ * Google News style.
+ */
+export default function StoryCard({ item, onClick, onThumbnailLoaded, variant = 'standard' }) {
   const fetchStarted = useRef(false)
 
   useEffect(() => {
@@ -25,38 +28,45 @@ export default function StoryCard({ item, onClick, onThumbnailLoaded }) {
     })
   }, [item.id, item.link, item.thumbnailUrl, onThumbnailLoaded])
 
+  const handleClick = () => onClick(item)
+  const handleKey = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onClick(item)
+    }
+  }
+
+  if (variant === 'hero') {
+    return (
+      <article className="card-hero" onClick={handleClick} role="button" tabIndex={0} onKeyDown={handleKey}>
+        {item.thumbnailUrl ? (
+          <img src={item.thumbnailUrl} alt="" className="card-hero-img" loading="lazy" />
+        ) : (
+          <div className="card-hero-img card-hero-img--placeholder" aria-hidden />
+        )}
+        <div className="card-hero-body">
+          <span className="card-source">{item.feedTitle}</span>
+          <h3 className="card-hero-title">{item.title || '(no title)'}</h3>
+          {item.description ? (
+            <p className="card-hero-snippet">{item.description}</p>
+          ) : null}
+          <span className="card-time">{formatTime(item.publishedAt)}</span>
+        </div>
+      </article>
+    )
+  }
+
+  // Standard compact card
   return (
-    <article
-      className={`story-card ${isUnread ? 'unread' : ''}`}
-      onClick={() => onClick(item)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onClick(item)
-        }
-      }}
-    >
-      {item.thumbnailUrl ? (
-        <img
-          src={item.thumbnailUrl}
-          alt=""
-          className="story-card-thumb"
-          loading="lazy"
-        />
-      ) : (
-        <div className="story-card-thumb" aria-hidden />
-      )}
-      <div className="story-card-body">
-        <h3 className="story-card-title">{item.title || '(no title)'}</h3>
-        {item.description ? (
-          <p className="story-card-snippet">{item.description}</p>
-        ) : null}
-        <p className="story-card-meta">
-          {item.feedTitle} · {formatTime(item.publishedAt)}
-        </p>
+    <article className="card" onClick={handleClick} role="button" tabIndex={0} onKeyDown={handleKey}>
+      <div className="card-body">
+        <span className="card-source">{item.feedTitle}</span>
+        <h3 className="card-title">{item.title || '(no title)'}</h3>
+        <span className="card-time">{formatTime(item.publishedAt)}</span>
       </div>
+      {item.thumbnailUrl ? (
+        <img src={item.thumbnailUrl} alt="" className="card-thumb" loading="lazy" />
+      ) : null}
     </article>
   )
 }

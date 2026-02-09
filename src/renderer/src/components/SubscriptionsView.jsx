@@ -53,7 +53,7 @@ export default function SubscriptionsView() {
   }
 
   return (
-    <div className="tab-panel">
+    <div>
       <h2 style={{ marginTop: 0 }}>Subscriptions</h2>
       <form className="add-feed-form" onSubmit={handleAdd}>
         <input
