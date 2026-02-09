@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { existsSync } from 'fs'
 import { initDb, addFeed as dbAddFeed, getFeeds, setFeedLastFetched, markRead as dbMarkRead, upsertItems, removeFeed as dbRemoveFeed, recordEngagement as dbRecordEngagement, getItemById, updateItemThumbnail } from './db.js'
 import { getRankedFeed } from './rank.js'
 import { fetchAndParse } from './feed.js'
@@ -17,10 +18,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const isDev = process.env.NODE_ENV !== 'production'
 
+function getIconPath() {
+  const buildDir = path.join(__dirname, '../../build')
+  const png = path.join(buildDir, 'icon.png')
+  return existsSync(png) ? png : null
+}
+
 function createWindow() {
+  const iconPath = getIconPath()
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
+    ...(iconPath && { icon: iconPath }),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -39,6 +48,11 @@ function createWindow() {
 app.whenReady().then(async () => {
   const dbPath = path.join(app.getPath('userData'), 'rss-reader.db')
   await initDb(dbPath)
+
+  const iconPath = getIconPath()
+  if (iconPath && process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(iconPath)
+  }
 
   createWindow()
 
@@ -117,57 +131,35 @@ ipcMain.handle('subscriptions:refresh', async () => {
   return { refreshed: feeds.length }
 })
 
-const THUMBNAIL_CONCURRENCY = 5
-let thumbnailActive = 0
-const thumbnailQueue = []
+/** Per-host queue: max 1 concurrent fetch per hostname to avoid 429 rate limits. */
+const hostQueues = new Map()
 
-function runThumbnailQueue() {
-  while (thumbnailQueue.length > 0 && thumbnailActive < THUMBNAIL_CONCURRENCY) {
-    thumbnailActive += 1
-    const { resolve, itemId } = thumbnailQueue.shift()
-    const item = getItemById(itemId)
-    if (!item?.link) {
-      thumbnailActive -= 1
-      resolve({ itemId, thumbnailUrl: null })
-      runThumbnailQueue()
-      return
-    }
-    fetchOgImage(item.link).then((thumbnailUrl) => {
+function enqueueForHost(host, fn) {
+  if (!hostQueues.has(host)) hostQueues.set(host, Promise.resolve())
+  const chain = hostQueues.get(host).then(fn, fn)
+  hostQueues.set(host, chain)
+  return chain
+}
+
+function getHost(link) {
+  try { return new URL(link).hostname } catch { return '_default' }
+}
+
+function doThumbnailFetch(itemId, link) {
+  const host = getHost(link)
+  return enqueueForHost(host, () =>
+    fetchOgImage(link).then((thumbnailUrl) => {
       if (thumbnailUrl) updateItemThumbnail(itemId, thumbnailUrl)
-      thumbnailActive -= 1
-      resolve({ itemId, thumbnailUrl })
-      runThumbnailQueue()
-    }).catch(() => {
-      thumbnailActive -= 1
-      resolve({ itemId, thumbnailUrl: null })
-      runThumbnailQueue()
-    })
-  }
+      return { itemId, thumbnailUrl }
+    }).catch(() => ({ itemId, thumbnailUrl: null }))
+  )
 }
 
 ipcMain.handle('thumbnail:fetch', (_event, itemId) => {
   const itemIdNum = Number(itemId)
-  if (thumbnailActive < THUMBNAIL_CONCURRENCY) {
-    thumbnailActive += 1
-    const item = getItemById(itemIdNum)
-    if (!item?.link) {
-      thumbnailActive -= 1
-      return Promise.resolve({ itemId: itemIdNum, thumbnailUrl: null })
-    }
-    return fetchOgImage(item.link).then((thumbnailUrl) => {
-      if (thumbnailUrl) updateItemThumbnail(itemIdNum, thumbnailUrl)
-      thumbnailActive -= 1
-      runThumbnailQueue()
-      return { itemId: itemIdNum, thumbnailUrl }
-    }).catch(() => {
-      thumbnailActive -= 1
-      runThumbnailQueue()
-      return { itemId: itemIdNum, thumbnailUrl: null }
-    })
-  }
-  return new Promise((resolve) => {
-    thumbnailQueue.push({ resolve, itemId: itemIdNum })
-  })
+  const item = getItemById(itemIdNum)
+  if (!item?.link) return Promise.resolve({ itemId: itemIdNum, thumbnailUrl: null })
+  return doThumbnailFetch(itemIdNum, item.link)
 })
 
 ipcMain.handle('ollama:available', async () => ollamaIsAvailable())

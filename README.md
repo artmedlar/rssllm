@@ -21,6 +21,7 @@ npm run dev
 - `npm run dev` – Start Electron with Vite dev server (hot reload).
 - `npm run build` – Build renderer and create distributable (electron-builder).
 - `npm run preview` – Vite preview (renderer only, no Electron).
+- `npm run icon` – Unpack `rss_reader_lens_transparent_iconset.zip` into `build/`, create `build/icon.icns` (macOS) and `build/icon.png` (run once after adding the zip, or to refresh icons).
 
 ## Project structure
 

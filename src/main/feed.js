@@ -3,6 +3,12 @@ import Parser from 'rss-parser'
 const parser = new Parser({
   timeout: 10000,
   headers: { 'User-Agent': 'RSS-Reader/1.0' },
+  customFields: {
+    item: [
+      ['media:thumbnail', 'media:thumbnail', { keepArray: false }],
+      ['media:content', 'media:content', { keepArray: false }],
+    ],
+  },
 })
 
 /**
