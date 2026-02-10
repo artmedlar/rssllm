@@ -7,12 +7,13 @@
  * items as "seen" (renderer will re-fetch from DB).
  */
 
-import { getFeeds, setFeedLastFetched, upsertItemsReturningNew, getItemsWithoutEmbeddings, getItemTitleDescription, getItemEmbedding, setItemEmbedding } from './db.js'
+import { getFeeds, setFeedLastFetched, upsertItemsReturningNew, getItemsWithoutEmbeddings, getItemTitleDescription, getItemEmbedding, setItemEmbedding, getItemsWithoutThumbnails, updateItemThumbnail } from './db.js'
 import { fetchAndParse } from './feed.js'
 import { classifyTopic } from './classifier.js'
 import { isAvailable as ollamaIsAvailable, getEmbedding } from './ollama.js'
 import { runClustering } from './cluster.js'
 import { runNewsworthinessScoring } from './scorer.js'
+import { fetchOgImage } from './ogImage.js'
 
 const PARALLEL_FEEDS = 6
 const CYCLE_DELAY_MS = 2 * 60 * 1000     // 2 min between full cycles
@@ -20,6 +21,8 @@ const FEED_DELAY_MS = 500                  // small delay between batches within
 const PER_HOST_MIN_MS = 3000               // min ms between requests to same host
 const EMBED_BATCH_SIZE = 10                // items to embed per batch
 const EMBED_BATCH_DELAY_MS = 200           // short pause between embedding batches
+const THUMB_BATCH_SIZE = 5                 // thumbnails to fetch per batch
+const THUMB_HOST_MIN_MS = 3000             // min ms between og:image fetches to same host
 
 /** Per-host rate limiter */
 const hostLastFetch = new Map()
@@ -120,11 +123,70 @@ async function runEmbeddings() {
 }
 
 /**
- * Main loop: fetch feeds -> compute embeddings -> cluster stories -> wait -> repeat.
+ * Fetch og:image thumbnails for items that don't have one.
+ * Uses per-host rate limiting to avoid 429s.
+ * Processes ALL items with missing thumbnails (no age limit) so older items
+ * eventually get images too. Newest items are fetched first.
+ */
+async function runThumbnailFetching() {
+  // No age limit -- fetch thumbnails for any item that's never been attempted
+  const items = getItemsWithoutThumbnails(0, 40)
+  if (!items.length) return
+
+  // Group by host to respect rate limits
+  const byHost = new Map()
+  for (const item of items) {
+    if (!item.link) {
+      // No link = can't fetch; mark as attempted
+      updateItemThumbnail(item.id, '')
+      continue
+    }
+    const host = getHost(item.link)
+    if (!byHost.has(host)) byHost.set(host, [])
+    byHost.get(host).push(item)
+  }
+
+  // Process one item per host in parallel, then move to the next round
+  let processed = 0
+  while (processed < 40) {
+    if (!running) break
+    const batch = []
+    for (const [, hostItems] of byHost) {
+      if (hostItems.length === 0) continue
+      const item = hostItems.shift()
+      batch.push(item)
+    }
+    if (batch.length === 0) break
+
+    await Promise.all(batch.map(async (item) => {
+      const host = getHost(item.link)
+      // Per-host rate limiting
+      const now = Date.now()
+      const last = hostLastFetch.get(host) ?? 0
+      const wait = Math.max(0, THUMB_HOST_MIN_MS - (now - last))
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+      hostLastFetch.set(host, Date.now())
+
+      try {
+        const thumbnailUrl = await fetchOgImage(item.link)
+        updateItemThumbnail(item.id, thumbnailUrl || '')
+      } catch {
+        updateItemThumbnail(item.id, '')
+      }
+    }))
+
+    processed += batch.length
+  }
+}
+
+/**
+ * Main loop: fetch feeds -> thumbnails -> embeddings -> cluster -> score -> wait -> repeat.
  */
 async function loop() {
   while (running) {
     await runCycle()
+    if (!running) break
+    await runThumbnailFetching()
     if (!running) break
     await runEmbeddings()
     if (!running) break

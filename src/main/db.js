@@ -619,6 +619,25 @@ export function getItemsWithoutNewsworthinessScore(maxAgeMs = 24 * 60 * 60 * 100
   return result[0].values.map((row) => ({ id: row[0], title: row[1], description: row[2] }))
 }
 
+/**
+ * Get recent items that have no thumbnail URL.
+ * @param {number} maxAgeMs
+ * @param {number} limit
+ * @returns {{ id: number, link: string }[]}
+ */
+export function getItemsWithoutThumbnails(maxAgeMs = 0, limit = 40) {
+  const d = getDb()
+  const hasAgeCutoff = maxAgeMs > 0
+  const cutoff = hasAgeCutoff ? Date.now() - maxAgeMs : 0
+  const query = hasAgeCutoff
+    ? `SELECT id, link FROM items WHERE published_at > ? AND thumbnail_url IS NULL ORDER BY published_at DESC LIMIT ?`
+    : `SELECT id, link FROM items WHERE thumbnail_url IS NULL ORDER BY published_at DESC LIMIT ?`
+  const params = hasAgeCutoff ? [cutoff, limit] : [limit]
+  const result = d.exec(query, params)
+  if (!result.length || !result[0].values) return []
+  return result[0].values.map((row) => ({ id: row[0], link: row[1] }))
+}
+
 /** Update thumbnail for an item (e.g. after fetching og:image). */
 export function updateItemThumbnail(itemId, thumbnailUrl) {
   getDb().run('UPDATE items SET thumbnail_url = ? WHERE id = ?', [thumbnailUrl, Number(itemId)])

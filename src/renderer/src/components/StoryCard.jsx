@@ -26,7 +26,8 @@ export default function StoryCard({ item, onClick, onThumbnailLoaded, onClusterC
   const [clusterSize, setClusterSize] = useState(0)
 
   useEffect(() => {
-    if (item.thumbnailUrl || !item.link || !item.id || fetchStarted.current) return
+    // thumbnailUrl is null = not yet fetched; '' = attempted, no image found; 'http...' = has image
+    if (item.thumbnailUrl != null || !item.link || !item.id || fetchStarted.current) return
     fetchStarted.current = true
     fetchThumbnailForItem(item.id).then((res) => {
       if (res?.thumbnailUrl && onThumbnailLoaded) onThumbnailLoaded(item.id, res.thumbnailUrl)
