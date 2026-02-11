@@ -123,14 +123,45 @@ export async function initDb(pathToDb) {
     )
   `)
 
-  persist()
+  flushToDisk()        // initial schema write
+  startPeriodicPersist()
 }
 
+/**
+ * Persist is now a no-op for individual writes. The DB lives in memory and is
+ * flushed to disk on a fixed interval + on app quit. This avoids the "disk I/O
+ * error" caused by dozens of concurrent db.export()/writeFileSync() calls.
+ */
+let _dirty = false
+let _persistInterval = null
+
 function persist() {
+  _dirty = true
+}
+
+/** Start the periodic flush (call once after initDb). */
+function startPeriodicPersist() {
+  if (_persistInterval) return
+  _persistInterval = setInterval(() => {
+    if (_dirty) flushToDisk()
+  }, 30_000) // every 30 seconds
+}
+
+/** Force an immediate flush to disk (call on app quit). */
+export function persistNow() {
+  flushToDisk()
+}
+
+function flushToDisk() {
   if (!db || !dbPath) return
-  const data = db.export()
-  const buffer = Buffer.from(data)
-  fs.writeFileSync(dbPath, buffer)
+  _dirty = false
+  try {
+    const data = db.export()
+    const buffer = Buffer.from(data)
+    fs.writeFileSync(dbPath, buffer)
+  } catch (e) {
+    console.warn('[db] persist error:', e.message)
+  }
 }
 
 function getDb() {
@@ -518,18 +549,22 @@ export function getFeedEngagementRates() {
 
 /**
  * Get cluster size for each item in a list of item IDs.
+ * Returns the number of DISTINCT feeds in the cluster, not raw member count.
+ * This prevents foreign-language feeds that all carry the same wire story
+ * from inflating the cluster signal.
  * @param {number[]} itemIds
- * @returns {Map<number, number>} itemId -> cluster size
+ * @returns {Map<number, number>} itemId -> distinct feed count in cluster
  */
 export function getClusterSizesForItems(itemIds) {
   if (!itemIds.length) return new Map()
   const d = getDb()
   const sizes = new Map()
-  // For each item, check if it's a cluster representative
+  // Count distinct feeds per cluster, keyed by the cluster representative
   const result = d.exec(
-    `SELECT sc.representative_item_id, COUNT(cm.item_id) as cnt
+    `SELECT sc.representative_item_id, COUNT(DISTINCT i.feed_id) as cnt
      FROM story_clusters sc
      JOIN cluster_members cm ON cm.cluster_id = sc.id
+     JOIN items i ON i.id = cm.item_id
      GROUP BY sc.representative_item_id`
   )
   if (result.length && result[0].values) {

@@ -20,7 +20,8 @@ import { isAvailable, getEmbedding } from './ollama.js'
 const RECENCY_WEIGHT = 1.0
 const ENGAGEMENT_WEIGHT = 0.6
 const SOURCE_REP_WEIGHT = 0.5
-const CLUSTER_WEIGHT = 0.7
+const CLUSTER_WEIGHT = 0.4          // reduced — was 0.7; cluster signal should complement, not dominate
+const CLUSTER_CAP = 3               // cap effective cluster size (distinct feeds) to prevent runaway boost
 const AFFINITY_WEIGHT = 1.0
 const NEWSWORTHINESS_WEIGHT = 0.8
 const POOL_SIZE = 300
@@ -69,7 +70,8 @@ function scoreItem(item, now, engagementCount, sourceReputation, clusterSize, af
   const recency = RECENCY_WEIGHT / (1 + hoursAgo / 24)
   const engagement = ENGAGEMENT_WEIGHT * Math.log(1 + (engagementCount || 0))
   const sourceRep = SOURCE_REP_WEIGHT * Math.log(1 + (sourceReputation || 0))
-  const cluster = CLUSTER_WEIGHT * Math.log(1 + Math.max(0, (clusterSize || 1) - 1))
+  const effectiveCluster = Math.min(clusterSize || 1, CLUSTER_CAP)
+  const cluster = CLUSTER_WEIGHT * Math.log(1 + Math.max(0, effectiveCluster - 1))
   const affinity = AFFINITY_WEIGHT * (affinityScore || 0)
   // Normalize LLM score from 1-10 to 0-1, then apply weight. Score of 5 = neutral (0.0 boost).
   const nw = newsworthinessScore > 0
@@ -188,8 +190,9 @@ export async function getRankedFeed(page, limit, topic = 'all', similarToItemId 
   const engagementCounts = getEngagementCountsByItem(0)
   const feedEngagementRates = getFeedEngagementRates()
   const itemIds = pool.map((i) => i.id)
-  const clusterSizes = getClusterSizesForItems(itemIds)
-  const nwScores = getNewsworthinessScores(itemIds)
+  let clusterSizes, nwScores
+  try { clusterSizes = getClusterSizesForItems(itemIds) } catch { clusterSizes = new Map() }
+  try { nwScores = getNewsworthinessScores(itemIds) } catch { nwScores = new Map() }
   const now = Date.now()
 
   // Compute user interest profile for affinity scoring

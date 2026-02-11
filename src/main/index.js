@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
-import { initDb, addFeed as dbAddFeed, getFeeds, setFeedLastFetched, markRead as dbMarkRead, upsertItems, removeFeed as dbRemoveFeed, recordEngagement as dbRecordEngagement, getItemById, updateItemThumbnail, getClusterSizeForItem, getClusterMembers, getClusterForItem } from './db.js'
+import { initDb, persistNow, addFeed as dbAddFeed, getFeeds, setFeedLastFetched, markRead as dbMarkRead, upsertItems, removeFeed as dbRemoveFeed, recordEngagement as dbRecordEngagement, getItemById, updateItemThumbnail, getClusterSizeForItem, getClusterMembers, getClusterForItem } from './db.js'
 import { getRankedFeed } from './rank.js'
 import { fetchAndParse } from './feed.js'
 import { classifyTopic } from './classifier.js'
@@ -67,6 +67,10 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  persistNow()
 })
 
 // --- IPC ---

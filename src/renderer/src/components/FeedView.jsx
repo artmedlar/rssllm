@@ -75,6 +75,8 @@ export default function FeedView({ selectedTopic = 'home', readFilter = 'unread'
       })).filter((s) => s.items.length > 0)
 
       setSections(dedupedSections)
+    } catch (err) {
+      console.warn('[FeedView] loadHome error:', err)
     } finally {
       setHomeLoading(false)
     }
